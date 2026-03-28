@@ -1,0 +1,2 @@
+# firefox-auto-refresh-tab
+ 
