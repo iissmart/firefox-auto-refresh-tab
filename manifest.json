@@ -5,7 +5,8 @@
   "version": "1.0.0",
   "browser_specific_settings": {
     "gecko": {
-      "id": "auto-refresh-tab@iissmart.dev"
+      "id": "auto-refresh-tab@iissmart.dev",
+      "data_collection_permissions": []
     }
   },
   "permissions": ["tabs", "contextMenus", "storage", "alarms"],
@@ -20,6 +21,5 @@
   "icons": {
     "48": "icon48.svg",
     "128": "icon128.svg"
-  },
-  "data_collection_permissions": []
+  }
 }
