@@ -46,9 +46,9 @@ async function setRefresh(seconds) {
   const tabId = await getActiveTabId();
   if (!tabId) return;
 
-  const validated = Math.max(5, Math.min(3600, Number(seconds) || 0));
-  if (validated < 5) {
-    setCurrentStatus("Interval must be at least 5 seconds");
+  const validated = Math.max(1, Math.min(3600, Number(seconds) || 0));
+  if (validated < 1) {
+    setCurrentStatus("Interval must be at least 1 second");
     return;
   }
 
