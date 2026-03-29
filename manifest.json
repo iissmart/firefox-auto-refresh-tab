@@ -6,7 +6,11 @@
   "browser_specific_settings": {
     "gecko": {
       "id": "auto-refresh-tab@iissmart.dev",
-      "data_collection_permissions": []
+      "data_collection_permissions": {
+        "analytics": false,
+        "personalization": false,
+        "advertising": false
+      }
     }
   },
   "permissions": ["tabs", "contextMenus", "storage", "alarms"],
