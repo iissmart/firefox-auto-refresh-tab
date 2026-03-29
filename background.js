@@ -181,6 +181,7 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
   } else {
     stopIconUpdates();
   }
+  await updateIcon();
 });
 
 browser.runtime.onMessage.addListener(async (message) => {
