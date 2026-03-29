@@ -112,6 +112,13 @@ function buildContextMenu() {
       contexts: ["page", "tab"]
     });
 
+    browser.contextMenus.create({
+      id: `${CONTEXT_MENU_PREFIX}stop`,
+      title: "Stop refreshing",
+      parentId: `${CONTEXT_MENU_PREFIX}header`,
+      contexts: ["page", "tab"]
+    });
+
     STATIC_PERIODS.forEach((s) => {
       browser.contextMenus.create({
         id: `${CONTEXT_MENU_PREFIX}${s}`,
@@ -119,13 +126,6 @@ function buildContextMenu() {
         parentId: `${CONTEXT_MENU_PREFIX}header`,
         contexts: ["page", "tab"]
       });
-    });
-
-    browser.contextMenus.create({
-      id: `${CONTEXT_MENU_PREFIX}stop`,
-      title: "Stop refreshing",
-      parentId: `${CONTEXT_MENU_PREFIX}header`,
-      contexts: ["page", "tab"]
     });
   });
 }
