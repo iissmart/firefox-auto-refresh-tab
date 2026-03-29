@@ -21,11 +21,11 @@ function createIconSVG(size, color, text = '') {
 async function updateIcon() {
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
   const activeTab = tabs[0];
-  if (!activeTab) return;
-
-  const interval = await getTabAutoRefreshInterval(activeTab.id);
-  if (interval > 0) {
-    browser.browserAction.setIcon({ path: createIconSVG(48, '#aa0000', currentCountdown.toString()) });
+  const anyHas = await anyTabHasRefresh();
+  if (anyHas) {
+    const interval = activeTab ? await getTabAutoRefreshInterval(activeTab.id) : 0;
+    const text = interval > 0 ? currentCountdown.toString() : '';
+    browser.browserAction.setIcon({ path: createIconSVG(48, '#aa0000', text) });
   } else {
     browser.browserAction.setIcon({ path: 'icon48.svg' });
   }
@@ -75,6 +75,8 @@ async function setTabAutoRefresh(tabId, seconds) {
     await clearTabAutoRefresh(tabId);
   }
 
+  updateIcon();
+
   return state;
 }
 
@@ -94,12 +96,19 @@ async function clearTabAutoRefresh(tabId) {
     stopCountdown();
   }
 
+  updateIcon();
+
   return data;
 }
 
 async function getTabAutoRefreshInterval(tabId) {
   const state = (await browser.storage.local.get("refreshMap")).refreshMap || {};
   return state[tabId] || 0;
+}
+
+async function anyTabHasRefresh() {
+  const state = (await browser.storage.local.get("refreshMap")).refreshMap || {};
+  return Object.keys(state).length > 0;
 }
 
 function buildContextMenu() {
@@ -161,6 +170,7 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
       const interval = await getTabAutoRefreshInterval(tabId);
       startCountdown(interval);
     }
+    updateIcon();
   } catch (error) {
     // Tab may have been closed. Clear state just in case.
     await clearTabAutoRefresh(tabId);
