@@ -3,8 +3,8 @@ const MAX_INTERVAL_SECS = 3600;
 
 const STATIC_PERIODS = [1, 5, 10, 15, 30, 60, 120, 300];
 
-let currentCountdown = 0;
-let countdownInterval = null;
+const nextRefreshTimes = {};
+let updateInterval = null;
 
 function getAlarmName(tabId) {
   return `autoRefresh-${tabId}`;
@@ -24,30 +24,23 @@ async function updateIcon() {
   if (!activeTab) return;
 
   const interval = await getTabAutoRefreshInterval(activeTab.id);
-  if (interval > 0) {
-    browser.action.setIcon({ path: createIconSVG(48, '#aa0000', currentCountdown.toString()) });
+  if (interval > 0 && nextRefreshTimes[activeTab.id]) {
+    const remaining = Math.max(0, Math.ceil((nextRefreshTimes[activeTab.id] - Date.now()) / 1000));
+    browser.action.setIcon({ path: createIconSVG(48, '#aa0000', remaining.toString()) });
   } else {
     browser.action.setIcon({ path: 'icon48.svg' });
   }
 }
 
-function startCountdown(interval) {
-  currentCountdown = interval;
-  if (countdownInterval) clearInterval(countdownInterval);
-  countdownInterval = setInterval(() => {
-    if (currentCountdown > 0) {
-      currentCountdown--;
-      updateIcon();
-    }
-  }, 1000);
-  updateIcon();
+function startIconUpdates() {
+  if (updateInterval) clearInterval(updateInterval);
+  updateInterval = setInterval(updateIcon, 1000);
 }
 
-function stopCountdown() {
-  currentCountdown = 0;
-  if (countdownInterval) {
-    clearInterval(countdownInterval);
-    countdownInterval = null;
+function stopIconUpdates() {
+  if (updateInterval) {
+    clearInterval(updateInterval);
+    updateInterval = null;
   }
   updateIcon();
 }
@@ -64,9 +57,11 @@ async function setTabAutoRefresh(tabId, seconds) {
   state[tabId] = seconds;
   await browser.storage.local.set({ refreshMap: state });
 
+  nextRefreshTimes[tabId] = Date.now() + seconds * 1000;
+
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
   if (tabs[0] && tabs[0].id === tabId) {
-    startCountdown(seconds);
+    startIconUpdates();
   }
 
   try {
@@ -92,9 +87,11 @@ async function clearTabAutoRefresh(tabId) {
     await browser.storage.local.set({ refreshMap: data });
   }
 
+  delete nextRefreshTimes[tabId];
+
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
   if (tabs[0] && tabs[0].id === tabId) {
-    stopCountdown();
+    stopIconUpdates();
   }
 
   updateIcon();
@@ -161,11 +158,10 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 
   try {
     await browser.tabs.reload(tabId, { bypassCache: false });
-    // Reset countdown for active tab
-    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-    if (tabs[0] && tabs[0].id === tabId) {
-      const interval = await getTabAutoRefreshInterval(tabId);
-      startCountdown(interval);
+    // Reset next refresh time
+    const interval = await getTabAutoRefreshInterval(tabId);
+    if (interval > 0) {
+      nextRefreshTimes[tabId] = Date.now() + interval * 1000;
     }
     updateIcon();
   } catch (error) {
@@ -181,9 +177,9 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
 browser.tabs.onActivated.addListener(async (activeInfo) => {
   const interval = await getTabAutoRefreshInterval(activeInfo.tabId);
   if (interval > 0) {
-    startCountdown(interval);
+    startIconUpdates();
   } else {
-    stopCountdown();
+    stopIconUpdates();
   }
 });
 
