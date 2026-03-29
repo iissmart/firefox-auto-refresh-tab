@@ -1,16 +1,15 @@
 const PRESETS = [1, 5, 10, 15, 30, 60, 120, 300];
 
-const $interval = document.getElementById("interval");
-const $start = document.getElementById("start");
+const $presetButtons = document.getElementById("presetButtons");
 const $stop = document.getElementById("stop");
 const $status = document.getElementById("status");
 
 function renderOptions() {
   PRESETS.forEach((sec) => {
-    const opt = document.createElement("option");
-    opt.value = sec;
-    opt.textContent = `${sec} sec`;
-    $interval.appendChild(opt);
+    const btn = document.createElement("button");
+    btn.textContent = `${sec}s`;
+    btn.addEventListener("click", () => setRefresh(sec));
+    $presetButtons.appendChild(btn);
   });
 }
 
@@ -64,8 +63,6 @@ async function stopRefresh() {
   await refreshUI();
 }
 
-$interval.addEventListener("change", () => setRefresh($interval.value));
-$start.addEventListener("click", () => setRefresh($interval.value));
 $stop.addEventListener("click", stopRefresh);
 
 browser.runtime.onMessage.addListener((message) => {
