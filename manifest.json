@@ -7,9 +7,7 @@
     "gecko": {
       "id": "auto-refresh-tab@iissmart.dev",
       "data_collection_permissions": {
-        "analytics": false,
-        "personalization": false,
-        "advertising": false
+        "required": ["none"]
       }
     }
   },
