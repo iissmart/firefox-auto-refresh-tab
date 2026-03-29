@@ -19,6 +19,13 @@ async function setTabAutoRefresh(tabId, seconds) {
   state[tabId] = seconds;
   await browser.storage.local.set({ refreshMap: state });
 
+  try {
+    await browser.tabs.reload(tabId, { bypassCache: false });
+  } catch (error) {
+    // If tab is unavailable, clear the interval.
+    await clearTabAutoRefresh(tabId);
+  }
+
   return state;
 }
 
