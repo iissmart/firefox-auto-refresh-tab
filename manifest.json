@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Auto Refresh Tab",
+  "description": "Automatically refreshes the selected tab at configurable intervals via context menu and popup.",
+  "version": "1.0.0",
+  "permissions": ["tabs", "contextMenus", "storage", "alarms"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "action": {
+    "default_title": "Auto Refresh Tab",
+    "default_popup": "popup.html"
+  }
+}

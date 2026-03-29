@@ -1,0 +1,26 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Auto Refresh Tab</title>
+  <link rel="stylesheet" href="popup.css" />
+</head>
+<body>
+  <h1>Auto Refresh</h1>
+  <div class="row">
+    <label for="interval">Interval:</label>
+    <select id="interval"></select>
+  </div>
+  <div class="row">
+    <input id="customSeconds" type="number" min="5" max="3600" placeholder="Custom sec" />
+    <button id="setCustom">Set</button>
+  </div>
+  <div class="row">
+    <button id="start">Start Refresh</button>
+    <button id="stop">Stop Refresh</button>
+  </div>
+  <p id="status">...</p>
+  <script src="popup.js"></script>
+</body>
+</html>
