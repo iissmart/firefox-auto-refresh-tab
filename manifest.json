@@ -11,5 +11,9 @@
   "action": {
     "default_title": "Auto Refresh Tab",
     "default_popup": "popup.html"
+  },
+  "icons": {
+    "48": "icon48.svg",
+    "128": "icon128.svg"
   }
 }

@@ -3,8 +3,52 @@ const MAX_INTERVAL_SECS = 3600;
 
 const STATIC_PERIODS = [1, 5, 10, 15, 30, 60, 120, 300];
 
+let currentCountdown = 0;
+let countdownInterval = null;
+
 function getAlarmName(tabId) {
   return `autoRefresh-${tabId}`;
+}
+
+function createIconSVG(size, color, text = '') {
+  const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
+    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 4}" fill="${color}" stroke="#000" stroke-width="2"/>
+    ${text ? `<text x="${size - 8}" y="${size - 4}" font-size="${size/5}" fill="white" text-anchor="end">${text}</text>` : ''}
+  </svg>`;
+  return 'data:image/svg+xml;base64,' + btoa(svg);
+}
+
+async function updateIcon() {
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  const activeTab = tabs[0];
+  if (!activeTab) return;
+
+  const interval = await getTabAutoRefreshInterval(activeTab.id);
+  if (interval > 0) {
+    browser.browserAction.setIcon({ path: createIconSVG(48, '#aa0000', currentCountdown.toString()) });
+  } else {
+    browser.browserAction.setIcon({ path: 'icon48.svg' });
+  }
+}
+
+function startCountdown(interval) {
+  currentCountdown = interval;
+  if (countdownInterval) clearInterval(countdownInterval);
+  countdownInterval = setInterval(() => {
+    if (currentCountdown > 0) {
+      currentCountdown--;
+      updateIcon();
+    }
+  }, 1000);
+}
+
+function stopCountdown() {
+  currentCountdown = 0;
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+  }
+  updateIcon();
 }
 
 async function setTabAutoRefresh(tabId, seconds) {
@@ -18,6 +62,11 @@ async function setTabAutoRefresh(tabId, seconds) {
   const state = (await browser.storage.local.get("refreshMap")).refreshMap || {};
   state[tabId] = seconds;
   await browser.storage.local.set({ refreshMap: state });
+
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tabs[0] && tabs[0].id === tabId) {
+    startCountdown(seconds);
+  }
 
   try {
     await browser.tabs.reload(tabId, { bypassCache: false });
@@ -38,6 +87,11 @@ async function clearTabAutoRefresh(tabId) {
   if (data.hasOwnProperty(tabId)) {
     delete data[tabId];
     await browser.storage.local.set({ refreshMap: data });
+  }
+
+  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+  if (tabs[0] && tabs[0].id === tabId) {
+    stopCountdown();
   }
 
   return data;
@@ -101,6 +155,12 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 
   try {
     await browser.tabs.reload(tabId, { bypassCache: false });
+    // Reset countdown for active tab
+    const tabs = await browser.tabs.query({ active: true, currentWindow: true });
+    if (tabs[0] && tabs[0].id === tabId) {
+      const interval = await getTabAutoRefreshInterval(tabId);
+      startCountdown(interval);
+    }
   } catch (error) {
     // Tab may have been closed. Clear state just in case.
     await clearTabAutoRefresh(tabId);
@@ -109,6 +169,15 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
   await clearTabAutoRefresh(tabId);
+});
+
+browser.tabs.onActivated.addListener(async (activeInfo) => {
+  const interval = await getTabAutoRefreshInterval(activeInfo.tabId);
+  if (interval > 0) {
+    startCountdown(interval);
+  } else {
+    stopCountdown();
+  }
 });
 
 browser.runtime.onMessage.addListener(async (message) => {
