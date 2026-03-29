@@ -21,11 +21,11 @@ function createIconSVG(size, color, text = '') {
 async function updateIcon() {
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
   const activeTab = tabs[0];
-  const anyHas = await anyTabHasRefresh();
-  if (anyHas) {
-    const interval = activeTab ? await getTabAutoRefreshInterval(activeTab.id) : 0;
-    const text = interval > 0 ? currentCountdown.toString() : '';
-    browser.action.setIcon({ path: createIconSVG(48, '#aa0000', text) });
+  if (!activeTab) return;
+
+  const interval = await getTabAutoRefreshInterval(activeTab.id);
+  if (interval > 0) {
+    browser.action.setIcon({ path: createIconSVG(48, '#aa0000', currentCountdown.toString()) });
   } else {
     browser.action.setIcon({ path: 'icon48.svg' });
   }
@@ -104,11 +104,6 @@ async function clearTabAutoRefresh(tabId) {
 async function getTabAutoRefreshInterval(tabId) {
   const state = (await browser.storage.local.get("refreshMap")).refreshMap || {};
   return state[tabId] || 0;
-}
-
-async function anyTabHasRefresh() {
-  const state = (await browser.storage.local.get("refreshMap")).refreshMap || {};
-  return Object.keys(state).length > 0;
 }
 
 function buildContextMenu() {
