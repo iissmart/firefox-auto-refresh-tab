@@ -1,8 +1,6 @@
 const PRESETS = [1, 5, 10, 15, 30, 60, 120, 300];
 
 const $interval = document.getElementById("interval");
-const $customSeconds = document.getElementById("customSeconds");
-const $setCustom = document.getElementById("setCustom");
 const $start = document.getElementById("start");
 const $stop = document.getElementById("stop");
 const $status = document.getElementById("status");
@@ -67,7 +65,6 @@ async function stopRefresh() {
 }
 
 $interval.addEventListener("change", () => setRefresh($interval.value));
-$setCustom.addEventListener("click", () => setRefresh($customSeconds.value));
 $start.addEventListener("click", () => setRefresh($interval.value));
 $stop.addEventListener("click", stopRefresh);
 
