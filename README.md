@@ -2,6 +2,8 @@
 
 A Firefox extension to automatically reload the current tab at a configurable period.
 
+> Entirely vibe coded using GitHub Copilot.
+
 ## Features
 
 - Select refresh interval from the right-click context menu
