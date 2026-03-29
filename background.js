@@ -25,9 +25,9 @@ async function updateIcon() {
   if (anyHas) {
     const interval = activeTab ? await getTabAutoRefreshInterval(activeTab.id) : 0;
     const text = interval > 0 ? currentCountdown.toString() : '';
-    browser.browserAction.setIcon({ path: createIconSVG(48, '#aa0000', text) });
+    browser.action.setIcon({ path: createIconSVG(48, '#aa0000', text) });
   } else {
-    browser.browserAction.setIcon({ path: 'icon48.svg' });
+    browser.action.setIcon({ path: 'icon48.svg' });
   }
 }
 
@@ -139,6 +139,7 @@ function buildContextMenu() {
 
 browser.runtime.onInstalled.addListener(() => {
   buildContextMenu();
+  updateIcon();
 });
 
 browser.contextMenus.onClicked.addListener(async (info, tab) => {
@@ -205,3 +206,8 @@ browser.runtime.onMessage.addListener(async (message) => {
     return { status: "ok" };
   }
 });
+
+// Initialize icon on service worker start
+(async () => {
+  await updateIcon();
+})();
