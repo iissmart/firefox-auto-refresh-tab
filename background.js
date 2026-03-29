@@ -13,7 +13,7 @@ function getAlarmName(tabId) {
 function createIconSVG(size, color, text = '') {
   const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
     <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 4}" fill="${color}" stroke="#000" stroke-width="2"/>
-    ${text ? `<text x="${size - 8}" y="${size - 4}" font-size="${size/5}" fill="white" text-anchor="end">${text}</text>` : ''}
+    ${text ? `<text x="${size/2}" y="${size/2 + 4}" font-size="12" fill="white" text-anchor="middle">${text}</text>` : ''}
   </svg>`;
   return 'data:image/svg+xml;base64,' + btoa(svg);
 }
