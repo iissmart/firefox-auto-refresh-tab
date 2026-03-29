@@ -17,6 +17,18 @@ A Firefox extension to automatically reload the current tab at a configurable pe
 3. Select `manifest.json` in this folder.
 4. Test using right-click on a tab/page or click the extension icon.
 
+## Packaging for Firefox Add-ons
+
+To create a `.xpi` file for submission to the Firefox Add-ons hub:
+
+```bash
+zip -r firefox-auto-refresh-tab.xpi . -x ".git/*"
+```
+
+This creates `firefox-auto-refresh-tab.xpi` containing all extension files, excluding the `.git` directory.
+
+Upload the `.xpi` to [Firefox Add-ons](https://addons.mozilla.org/developers/).
+
 ## Usage
 
 - Right-click the page/tab -> Auto refresh this tab -> choose interval or stop.
