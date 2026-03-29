@@ -1,4 +1,4 @@
-const PRESETS = [5, 10, 15, 30, 60, 120, 300];
+const PRESETS = [1, 5, 10, 15, 30, 60, 120, 300];
 
 const $interval = document.getElementById("interval");
 const $customSeconds = document.getElementById("customSeconds");

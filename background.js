@@ -1,7 +1,7 @@
 const CONTEXT_MENU_PREFIX = "auto-refresh-";
 const MAX_INTERVAL_SECS = 3600;
 
-const STATIC_PERIODS = [5, 10, 15, 30, 60, 120, 300];
+const STATIC_PERIODS = [1, 5, 10, 15, 30, 60, 120, 300];
 
 function getAlarmName(tabId) {
   return `autoRefresh-${tabId}`;
