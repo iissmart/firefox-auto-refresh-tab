@@ -40,6 +40,7 @@ function startCountdown(interval) {
       updateIcon();
     }
   }, 1000);
+  updateIcon();
 }
 
 function stopCountdown() {
