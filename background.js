@@ -11,9 +11,14 @@ function getAlarmName(tabId) {
 }
 
 function createIconSVG(size, color, text = '') {
+  let textEl = '';
+  if (text) {
+    const fontSize = text.length <= 2 ? 38 : text.length === 3 ? 30 : 24;
+    textEl = `<text x="${size/2}" y="${size/2}" font-size="${fontSize}" font-weight="bold" font-family="Arial,sans-serif" fill="white" stroke="#000" stroke-width="3" paint-order="stroke" text-anchor="middle" dominant-baseline="central">${text}</text>`;
+  }
   const svg = `<svg width="${size}" height="${size}" xmlns="http://www.w3.org/2000/svg">
-    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 4}" fill="${color}" stroke="#000" stroke-width="2"/>
-    ${text ? `<text x="${size/2}" y="${size/2 + 10}" font-size="32" font-weight="bold" fill="white" text-anchor="middle">${text}</text>` : ''}
+    <circle cx="${size/2}" cy="${size/2}" r="${size/2 - 2}" fill="${color}" stroke="#000" stroke-width="2"/>
+    ${textEl}
   </svg>`;
   return 'data:image/svg+xml;base64,' + btoa(svg);
 }
