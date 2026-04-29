@@ -19,16 +19,15 @@ function createIconSVG(size, color, text = '') {
 }
 
 async function updateIcon() {
-  const tabs = await browser.tabs.query({ active: true, currentWindow: true });
-  const activeTab = tabs[0];
-  if (!activeTab) return;
-
-  const interval = await getTabAutoRefreshInterval(activeTab.id);
-  if (interval > 0 && nextRefreshTimes[activeTab.id]) {
-    const remaining = Math.max(0, Math.ceil((nextRefreshTimes[activeTab.id] - Date.now()) / 1000));
-    browser.action.setIcon({ path: createIconSVG(48, '#aa0000', remaining.toString()) });
-  } else {
-    browser.action.setIcon({ path: 'icon48.svg' });
+  const activeTabs = await browser.tabs.query({ active: true });
+  for (const tab of activeTabs) {
+    const interval = await getTabAutoRefreshInterval(tab.id);
+    if (interval > 0 && nextRefreshTimes[tab.id]) {
+      const remaining = Math.max(0, Math.ceil((nextRefreshTimes[tab.id] - Date.now()) / 1000));
+      browser.action.setIcon({ tabId: tab.id, path: createIconSVG(48, '#aa0000', remaining.toString()) });
+    } else {
+      browser.action.setIcon({ tabId: tab.id, path: 'icon48.svg' });
+    }
   }
 }
 
@@ -45,9 +44,9 @@ function stopIconUpdates() {
   updateIcon();
 }
 
-async function setTabAutoRefresh(tabId, seconds) {
+async function setTabAutoRefresh(tabId, seconds, { skipReload = false, syncSiblings = false } = {}) {
   if (!tabId || seconds <= 0 || seconds > MAX_INTERVAL_SECS) {
-    return clearTabAutoRefresh(tabId);
+    return clearTabAutoRefresh(tabId, { syncSiblings });
   }
 
   await browser.alarms.clear(getAlarmName(tabId));
@@ -57,6 +56,18 @@ async function setTabAutoRefresh(tabId, seconds) {
   state[tabId] = seconds;
   await browser.storage.local.set({ refreshMap: state });
 
+  // Store URL-to-interval mapping so new tabs to the same URL auto-refresh
+  let tabUrl = null;
+  try {
+    const tab = await browser.tabs.get(tabId);
+    tabUrl = tab.url;
+    if (tabUrl && !tabUrl.startsWith("about:")) {
+      const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+      urlMap[tabUrl] = seconds;
+      await browser.storage.local.set({ urlRefreshMap: urlMap });
+    }
+  } catch (e) { /* tab may not exist */ }
+
   nextRefreshTimes[tabId] = Date.now() + seconds * 1000;
 
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
@@ -64,25 +75,50 @@ async function setTabAutoRefresh(tabId, seconds) {
     startIconUpdates();
   }
 
-  try {
-    await browser.tabs.reload(tabId, { bypassCache: false });
-  } catch (error) {
-    // If tab is unavailable, clear the interval.
-    await clearTabAutoRefresh(tabId);
+  if (!skipReload) {
+    try {
+      await browser.tabs.reload(tabId, { bypassCache: false });
+    } catch (error) {
+      // If tab is unavailable, clear the interval.
+      await clearTabAutoRefresh(tabId);
+    }
   }
 
   updateIcon();
 
+  // Propagate to other tabs with the same URL
+  if (syncSiblings && tabUrl && !tabUrl.startsWith("about:")) {
+    const allTabs = await browser.tabs.query({ url: tabUrl });
+    for (const sibling of allTabs) {
+      if (sibling.id !== tabId) {
+        await setTabAutoRefresh(sibling.id, seconds, { skipReload: false, syncSiblings: false });
+      }
+    }
+  }
+
   return state;
 }
 
-async function clearTabAutoRefresh(tabId) {
+async function clearTabAutoRefresh(tabId, { clearUrl = true, syncSiblings = false } = {}) {
   if (!tabId) return;
 
   await browser.alarms.clear(getAlarmName(tabId));
 
+  let tabUrl = null;
   const data = (await browser.storage.local.get("refreshMap")).refreshMap || {};
   if (data.hasOwnProperty(tabId)) {
+    // Remove URL mapping only when user explicitly stops
+    if (clearUrl) {
+      try {
+        const tab = await browser.tabs.get(tabId);
+        tabUrl = tab.url;
+        if (tabUrl) {
+          const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+          delete urlMap[tabUrl];
+          await browser.storage.local.set({ urlRefreshMap: urlMap });
+        }
+      } catch (e) { /* tab may already be gone */ }
+    }
     delete data[tabId];
     await browser.storage.local.set({ refreshMap: data });
   }
@@ -95,6 +131,16 @@ async function clearTabAutoRefresh(tabId) {
   }
 
   updateIcon();
+
+  // Propagate stop to other tabs with the same URL
+  if (syncSiblings && tabUrl && !tabUrl.startsWith("about:")) {
+    const allTabs = await browser.tabs.query({ url: tabUrl });
+    for (const sibling of allTabs) {
+      if (sibling.id !== tabId) {
+        await clearTabAutoRefresh(sibling.id, { clearUrl: false, syncSiblings: false });
+      }
+    }
+  }
 
   return data;
 }
@@ -140,14 +186,14 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 
   const key = info.menuItemId.slice(CONTEXT_MENU_PREFIX.length);
   if (key === "stop") {
-    await clearTabAutoRefresh(tab.id);
+    await clearTabAutoRefresh(tab.id, { syncSiblings: true });
     return;
   }
 
   const seconds = Number(key);
   if (Number.isNaN(seconds) || seconds <= 0) return;
 
-  await setTabAutoRefresh(tab.id, seconds);
+  await setTabAutoRefresh(tab.id, seconds, { syncSiblings: true });
 });
 
 browser.alarms.onAlarm.addListener(async (alarm) => {
@@ -171,7 +217,22 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
 });
 
 browser.tabs.onRemoved.addListener(async (tabId) => {
-  await clearTabAutoRefresh(tabId);
+  await clearTabAutoRefresh(tabId, { clearUrl: false });
+});
+
+browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (changeInfo.status !== "complete" || !tab.url || tab.url.startsWith("about:")) return;
+
+  // Skip if this tab is already being auto-refreshed
+  const interval = await getTabAutoRefreshInterval(tabId);
+  if (interval > 0) return;
+
+  // Check if this URL has a saved refresh interval
+  const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+  const savedInterval = urlMap[tab.url];
+  if (savedInterval && savedInterval > 0) {
+    await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
+  }
 });
 
 browser.tabs.onActivated.addListener(async (activeInfo) => {
@@ -188,13 +249,13 @@ browser.runtime.onMessage.addListener(async (message) => {
   if (!message || !message.method) return;
 
   if (message.method === "set" && message.tabId && message.seconds) {
-    await setTabAutoRefresh(message.tabId, message.seconds);
+    await setTabAutoRefresh(message.tabId, message.seconds, { syncSiblings: true });
     browser.runtime.sendMessage("update");
     return { status: "ok" };
   }
 
   if (message.method === "stop" && message.tabId) {
-    await clearTabAutoRefresh(message.tabId);
+    await clearTabAutoRefresh(message.tabId, { syncSiblings: true });
     browser.runtime.sendMessage("update");
     return { status: "ok" };
   }
