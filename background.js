@@ -61,7 +61,7 @@ async function setTabAutoRefresh(tabId, seconds, { skipReload = false, syncSibli
   try {
     const tab = await browser.tabs.get(tabId);
     tabUrl = tab.url;
-    if (tabUrl && !tabUrl.startsWith("about:")) {
+    if (tabUrl) {
       const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
       urlMap[tabUrl] = seconds;
       await browser.storage.local.set({ urlRefreshMap: urlMap });
@@ -87,7 +87,7 @@ async function setTabAutoRefresh(tabId, seconds, { skipReload = false, syncSibli
   updateIcon();
 
   // Propagate to other tabs with the same URL
-  if (syncSiblings && tabUrl && !tabUrl.startsWith("about:")) {
+  if (syncSiblings && tabUrl) {
     const allTabs = await browser.tabs.query({ url: tabUrl });
     for (const sibling of allTabs) {
       if (sibling.id !== tabId) {
@@ -133,7 +133,7 @@ async function clearTabAutoRefresh(tabId, { clearUrl = true, syncSiblings = fals
   updateIcon();
 
   // Propagate stop to other tabs with the same URL
-  if (syncSiblings && tabUrl && !tabUrl.startsWith("about:")) {
+  if (syncSiblings && tabUrl) {
     const allTabs = await browser.tabs.query({ url: tabUrl });
     for (const sibling of allTabs) {
       if (sibling.id !== tabId) {
@@ -221,7 +221,7 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status !== "complete" || !tab.url || tab.url.startsWith("about:")) return;
+  if (changeInfo.status !== "complete" || !tab.url) return;
 
   // Skip if this tab is already being auto-refreshed
   const interval = await getTabAutoRefreshInterval(tabId);
