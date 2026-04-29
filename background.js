@@ -155,6 +155,14 @@ async function getTabAutoRefreshInterval(tabId) {
   return state[tabId] || 0;
 }
 
+function formatPeriod(seconds) {
+  if (seconds >= 60) {
+    const mins = seconds / 60;
+    return `${mins} ${mins === 1 ? 'minute' : 'minutes'}`;
+  }
+  return `${seconds} ${seconds === 1 ? 'second' : 'seconds'}`;
+}
+
 function buildContextMenu() {
   browser.contextMenus.removeAll().then(() => {
     browser.contextMenus.create({
@@ -173,7 +181,7 @@ function buildContextMenu() {
     STATIC_PERIODS.forEach((s) => {
       browser.contextMenus.create({
         id: `${CONTEXT_MENU_PREFIX}${s}`,
-        title: `Every ${s} seconds`,
+        title: `Every ${formatPeriod(s)}`,
         parentId: `${CONTEXT_MENU_PREFIX}header`,
         contexts: ["page", "tab"]
       });
@@ -266,7 +274,8 @@ browser.runtime.onMessage.addListener(async (message) => {
   }
 });
 
-// Initialize icon on service worker start
+// Initialize icon and context menu on service worker start
 (async () => {
+  buildContextMenu();
   await updateIcon();
 })();

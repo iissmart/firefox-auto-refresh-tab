@@ -1,5 +1,13 @@
 const PRESETS = [1, 5, 10, 15, 30, 60, 120, 300];
 
+function formatPeriod(seconds) {
+  if (seconds >= 60) {
+    const mins = seconds / 60;
+    return `${mins}m`;
+  }
+  return `${seconds}s`;
+}
+
 const $presetButtons = document.getElementById("presetButtons");
 const $stop = document.getElementById("stop");
 const $status = document.getElementById("status");
@@ -7,7 +15,7 @@ const $status = document.getElementById("status");
 function renderOptions() {
   PRESETS.forEach((sec) => {
     const btn = document.createElement("button");
-    btn.textContent = `${sec}s`;
+    btn.textContent = formatPeriod(sec);
     btn.addEventListener("click", () => setRefresh(sec));
     $presetButtons.appendChild(btn);
   });
@@ -36,7 +44,8 @@ async function refreshUI() {
 
   const interval = await getCurrentInterval(tabId);
   if (interval > 0) {
-    setCurrentStatus(`Active: every ${interval} seconds`);
+    const label = interval >= 60 ? `${interval / 60} minute${interval / 60 === 1 ? '' : 's'}` : `${interval} second${interval === 1 ? '' : 's'}`;
+    setCurrentStatus(`Active: every ${label}`);
   } else {
     setCurrentStatus("Stopped");
   }
