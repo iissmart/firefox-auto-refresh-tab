@@ -258,6 +258,17 @@ browser.tabs.onActivated.addListener(async (activeInfo) => {
   await updateIcon();
 });
 
+browser.windows.onFocusChanged.addListener(async (windowId) => {
+  if (windowId === browser.windows.WINDOW_ID_NONE) return;
+  const tabs = await browser.tabs.query({ active: true, windowId });
+  if (tabs.length === 0) return;
+  const interval = await getTabAutoRefreshInterval(tabs[0].id);
+  if (interval > 0) {
+    startIconUpdates();
+  }
+  await updateIcon();
+});
+
 browser.runtime.onMessage.addListener(async (message) => {
   if (!message || !message.method) return;
 
