@@ -306,6 +306,46 @@ browser.runtime.onMessage.addListener(async (message) => {
     browser.runtime.sendMessage("update");
     return { status: "ok" };
   }
+
+  if (message.method === "removeUrl" && message.url) {
+    const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+    delete urlMap[message.url];
+    await browser.storage.local.set({ urlRefreshMap: urlMap });
+
+    // Stop any tabs currently refreshing this URL
+    try {
+      const tabs = await browser.tabs.query({ url: message.url });
+      for (const tab of tabs) {
+        const interval = await getTabAutoRefreshInterval(tab.id);
+        if (interval > 0) {
+          await clearTabAutoRefresh(tab.id, { clearUrl: false });
+        }
+      }
+    } catch (e) { /* URL pattern may not be queryable */ }
+
+    return { status: "ok" };
+  }
+
+  if (message.method === "clearAllUrls") {
+    const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+    const urls = Object.keys(urlMap);
+    await browser.storage.local.set({ urlRefreshMap: {} });
+
+    // Stop all tabs that were refreshing any of these URLs
+    for (const url of urls) {
+      try {
+        const tabs = await browser.tabs.query({ url });
+        for (const tab of tabs) {
+          const interval = await getTabAutoRefreshInterval(tab.id);
+          if (interval > 0) {
+            await clearTabAutoRefresh(tab.id, { clearUrl: false });
+          }
+        }
+      } catch (e) { /* skip unqueryable URLs */ }
+    }
+
+    return { status: "ok" };
+  }
 });
 
 // Initialize icon and context menu on service worker start

@@ -1,0 +1,14 @@
+body { font-family: Arial, sans-serif; max-width: 800px; margin: 20px auto; padding: 0 16px; }
+h1 { font-size: 1.4em; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; margin-bottom: 12px; }
+th, td { text-align: left; padding: 6px 10px; border-bottom: 1px solid #ddd; }
+th { background: #f5f5f5; }
+td.url { word-break: break-all; max-width: 500px; }
+td.interval { white-space: nowrap; }
+button { padding: 6px 12px; cursor: pointer; }
+button.remove { background: #d9534f; color: #fff; border: none; border-radius: 3px; }
+button.remove:hover { background: #c9302c; }
+#clearAll { background: #f0ad4e; color: #fff; border: none; border-radius: 3px; }
+#clearAll:hover { background: #ec971f; }
+.actions { margin-top: 8px; }
+#empty { color: #666; font-style: italic; }

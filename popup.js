@@ -74,6 +74,10 @@ async function stopRefresh() {
 
 $stop.addEventListener("click", stopRefresh);
 
+document.getElementById("manage").addEventListener("click", () => {
+  browser.tabs.create({ url: browser.runtime.getURL("manage.html") });
+});
+
 browser.runtime.onMessage.addListener((message) => {
   if (message === "update") {
     refreshUI();

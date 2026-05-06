@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manage Saved URLs – Auto Refresh Tab</title>
+  <link rel="stylesheet" href="manage.css" />
+</head>
+<body>
+  <h1>Saved URLs</h1>
+  <p id="empty" hidden>No saved URLs.</p>
+  <table id="urlTable" hidden>
+    <thead>
+      <tr>
+        <th>URL</th>
+        <th>Interval</th>
+        <th></th>
+      </tr>
+    </thead>
+    <tbody id="urlBody"></tbody>
+  </table>
+  <div class="actions">
+    <button id="clearAll">Clear All</button>
+  </div>
+  <script src="manage.js"></script>
+</body>
+</html>
