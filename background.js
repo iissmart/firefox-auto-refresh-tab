@@ -194,6 +194,25 @@ browser.runtime.onInstalled.addListener(() => {
   updateIcon();
 });
 
+// Re-initialize in-memory state when background script starts (handles event page restarts)
+(async function restoreState() {
+  const state = (await browser.storage.local.get("refreshMap")).refreshMap || {};
+  for (const tabId of Object.keys(state)) {
+    const id = Number(tabId);
+    const seconds = state[tabId];
+    if (seconds > 0) {
+      nextRefreshTimes[id] = Date.now() + seconds * 1000;
+      // Ensure the alarm still exists (may have been lost)
+      const existing = await browser.alarms.get(getAlarmName(id));
+      if (!existing) {
+        await browser.alarms.create(getAlarmName(id), { periodInMinutes: seconds / 60 });
+      }
+    }
+  }
+  buildContextMenu();
+  updateIcon();
+})();
+
 browser.contextMenus.onClicked.addListener(async (info, tab) => {
   if (!tab || !tab.id || !info.menuItemId.startsWith(CONTEXT_MENU_PREFIX)) return;
 
@@ -224,8 +243,18 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
     }
     updateIcon();
   } catch (error) {
-    // Tab may have been closed. Clear state just in case.
-    await clearTabAutoRefresh(tabId);
+    // Reload failed — only clear if the tab truly no longer exists
+    try {
+      await browser.tabs.get(tabId);
+      // Tab still exists (e.g. window minimized/suspended), keep refreshing
+      const interval = await getTabAutoRefreshInterval(tabId);
+      if (interval > 0) {
+        nextRefreshTimes[tabId] = Date.now() + interval * 1000;
+      }
+    } catch (e) {
+      // Tab genuinely gone, safe to clear
+      await clearTabAutoRefresh(tabId);
+    }
   }
 });
 
