@@ -234,15 +234,38 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
-  if (changeInfo.status !== "complete" || !tab.url) return;
+  // When URL changes on a tab that is actively refreshing, stop it
+  // unless the new URL is also in the urlRefreshMap
+  if (changeInfo.url) {
+    const interval = await getTabAutoRefreshInterval(tabId);
+    if (interval > 0) {
+      const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+      const savedInterval = urlMap[changeInfo.url];
+      if (savedInterval && savedInterval > 0) {
+        // New URL was also being refreshed, update interval if different
+        if (savedInterval !== interval) {
+          await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
+        }
+      } else {
+        // New URL is not being refreshed, stop refreshing this tab
+        await clearTabAutoRefresh(tabId, { clearUrl: false });
+      }
+    }
+  }
+
+  if (changeInfo.status !== "complete") return;
 
   // Skip if this tab is already being auto-refreshed
   const interval = await getTabAutoRefreshInterval(tabId);
   if (interval > 0) return;
 
+  // Get the tab URL - tab object may not always have it populated
+  const url = tab.url || (await browser.tabs.get(tabId).catch(() => null))?.url;
+  if (!url) return;
+
   // Check if this URL has a saved refresh interval
   const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-  const savedInterval = urlMap[tab.url];
+  const savedInterval = urlMap[url];
   if (savedInterval && savedInterval > 0) {
     await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
   }
