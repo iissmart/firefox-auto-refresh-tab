@@ -1,5 +1,18 @@
 const CONTEXT_MENU_PREFIX = "auto-refresh-";
 const MAX_INTERVAL_SECS = 3600;
+const WATCHDOG_ALARM = "autoRefresh-watchdog";
+const WATCHDOG_INTERVAL_MIN = 1;
+
+/** Strip the fragment (#…) from a URL so anchor-only changes are ignored. */
+function stripHash(url) {
+  try {
+    const u = new URL(url);
+    u.hash = '';
+    return u.href;
+  } catch {
+    return url;
+  }
+}
 
 const STATIC_PERIODS = [1, 5, 10, 15, 30, 60, 120, 300];
 
@@ -68,7 +81,7 @@ async function setTabAutoRefresh(tabId, seconds, { skipReload = false, syncSibli
     tabUrl = tab.url;
     if (tabUrl) {
       const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-      urlMap[tabUrl] = seconds;
+      urlMap[stripHash(tabUrl)] = seconds;
       await browser.storage.local.set({ urlRefreshMap: urlMap });
     }
   } catch (e) { /* tab may not exist */ }
@@ -119,7 +132,7 @@ async function clearTabAutoRefresh(tabId, { clearUrl = true, syncSiblings = fals
         tabUrl = tab.url;
         if (tabUrl) {
           const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-          delete urlMap[tabUrl];
+          delete urlMap[stripHash(tabUrl)];
           await browser.storage.local.set({ urlRefreshMap: urlMap });
         }
       } catch (e) { /* tab may already be gone */ }
@@ -189,10 +202,34 @@ function buildContextMenu() {
   });
 }
 
-browser.runtime.onInstalled.addListener(() => {
+browser.runtime.onInstalled.addListener(async () => {
   buildContextMenu();
   updateIcon();
+  // Start watchdog alarm
+  await browser.alarms.create(WATCHDOG_ALARM, { periodInMinutes: WATCHDOG_INTERVAL_MIN });
 });
+
+// Reconcile urlRefreshMap against open tabs — re-establish refresh for any
+// tabs whose tab-level state (refreshMap + alarm) was lost.
+async function reconcileUrlMap() {
+  const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+  const state = (await browser.storage.local.get("refreshMap")).refreshMap || {};
+  const activeTabIds = new Set(Object.keys(state).map(Number));
+
+  for (const [url, seconds] of Object.entries(urlMap)) {
+    if (!seconds || seconds <= 0) continue;
+    let tabs;
+    try {
+      tabs = await browser.tabs.query({ url });
+    } catch (e) { continue; } // URL pattern not queryable
+    for (const tab of tabs) {
+      if (!activeTabIds.has(tab.id)) {
+        await setTabAutoRefresh(tab.id, seconds, { skipReload: true });
+        activeTabIds.add(tab.id);
+      }
+    }
+  }
+}
 
 // Re-initialize in-memory state when background script starts (handles event page restarts)
 (async function restoreState() {
@@ -209,6 +246,16 @@ browser.runtime.onInstalled.addListener(() => {
       }
     }
   }
+
+  // Recover any tabs whose refreshMap entry was lost but URL is still tracked
+  await reconcileUrlMap();
+
+  // Ensure watchdog alarm is running
+  const wd = await browser.alarms.get(WATCHDOG_ALARM);
+  if (!wd) {
+    await browser.alarms.create(WATCHDOG_ALARM, { periodInMinutes: WATCHDOG_INTERVAL_MIN });
+  }
+
   buildContextMenu();
   updateIcon();
 })();
@@ -229,25 +276,45 @@ browser.contextMenus.onClicked.addListener(async (info, tab) => {
 });
 
 browser.alarms.onAlarm.addListener(async (alarm) => {
+  // Watchdog: periodically reconcile urlRefreshMap against open tabs
+  if (alarm.name === WATCHDOG_ALARM) {
+    await reconcileUrlMap();
+    return;
+  }
+
   if (!alarm.name.startsWith("autoRefresh-")) return;
 
   const tabId = Number(alarm.name.replace("autoRefresh-", ""));
   if (!Number.isFinite(tabId)) return;
 
+  // Verify the tab is still supposed to be refreshing; recover from urlRefreshMap if needed
+  let interval = await getTabAutoRefreshInterval(tabId);
+  if (interval <= 0) {
+    try {
+      const tab = await browser.tabs.get(tabId);
+      if (tab.url) {
+        const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+        const savedInterval = urlMap[stripHash(tab.url)];
+        if (savedInterval && savedInterval > 0) {
+          await setTabAutoRefresh(tabId, savedInterval, { skipReload: false });
+          return;
+        }
+      }
+    } catch (e) { /* tab gone */ }
+    await browser.alarms.clear(alarm.name);
+    return;
+  }
+
   try {
     await browser.tabs.reload(tabId, { bypassCache: false });
     // Reset next refresh time
-    const interval = await getTabAutoRefreshInterval(tabId);
-    if (interval > 0) {
-      nextRefreshTimes[tabId] = Date.now() + interval * 1000;
-    }
+    nextRefreshTimes[tabId] = Date.now() + interval * 1000;
     updateIcon();
   } catch (error) {
     // Reload failed — only clear if the tab truly no longer exists
     try {
       await browser.tabs.get(tabId);
       // Tab still exists (e.g. window minimized/suspended), keep refreshing
-      const interval = await getTabAutoRefreshInterval(tabId);
       if (interval > 0) {
         nextRefreshTimes[tabId] = Date.now() + interval * 1000;
       }
@@ -268,16 +335,23 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     const interval = await getTabAutoRefreshInterval(tabId);
     if (interval > 0) {
-      const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-      const savedInterval = urlMap[changeInfo.url];
-      if (savedInterval && savedInterval > 0) {
-        // New URL was also being refreshed, update interval if different
-        if (savedInterval !== interval) {
-          await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
-        }
+      // Ignore fragment-only changes (anchor clicks)
+      const oldUrl = tab.url ? stripHash(tab.url) : null;
+      const newUrl = stripHash(changeInfo.url);
+      if (oldUrl && oldUrl === newUrl) {
+        // Same page, different anchor — keep refreshing
       } else {
-        // New URL is not being refreshed, stop refreshing this tab
-        await clearTabAutoRefresh(tabId, { clearUrl: false });
+        const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+        const savedInterval = urlMap[newUrl];
+        if (savedInterval && savedInterval > 0) {
+          // New URL was also being refreshed, update interval if different
+          if (savedInterval !== interval) {
+            await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
+          }
+        } else {
+          // New URL is not being refreshed, stop refreshing this tab
+          await clearTabAutoRefresh(tabId, { clearUrl: false });
+        }
       }
     }
   }
@@ -294,14 +368,30 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
 
   // Check if this URL has a saved refresh interval
   const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-  const savedInterval = urlMap[url];
+  const savedInterval = urlMap[stripHash(url)];
   if (savedInterval && savedInterval > 0) {
     await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
   }
 });
 
 browser.tabs.onActivated.addListener(async (activeInfo) => {
-  const interval = await getTabAutoRefreshInterval(activeInfo.tabId);
+  let interval = await getTabAutoRefreshInterval(activeInfo.tabId);
+
+  // If auto-refresh was lost (e.g. tab was backgrounded/discarded), recover from URL map
+  if (interval <= 0) {
+    try {
+      const tab = await browser.tabs.get(activeInfo.tabId);
+      if (tab.url) {
+        const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+        const savedInterval = urlMap[stripHash(tab.url)];
+        if (savedInterval && savedInterval > 0) {
+          await setTabAutoRefresh(activeInfo.tabId, savedInterval, { skipReload: false });
+          interval = savedInterval;
+        }
+      }
+    } catch (e) { /* tab may not exist */ }
+  }
+
   if (interval > 0) {
     startIconUpdates();
   } else {
@@ -338,7 +428,7 @@ browser.runtime.onMessage.addListener(async (message) => {
 
   if (message.method === "removeUrl" && message.url) {
     const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-    delete urlMap[message.url];
+    delete urlMap[stripHash(message.url)];
     await browser.storage.local.set({ urlRefreshMap: urlMap });
 
     // Stop any tabs currently refreshing this URL
