@@ -335,23 +335,17 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
   if (changeInfo.url) {
     const interval = await getTabAutoRefreshInterval(tabId);
     if (interval > 0) {
-      // Ignore fragment-only changes (anchor clicks)
-      const oldUrl = tab.url ? stripHash(tab.url) : null;
-      const newUrl = stripHash(changeInfo.url);
-      if (oldUrl && oldUrl === newUrl) {
-        // Same page, different anchor — keep refreshing
-      } else {
-        const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-        const savedInterval = urlMap[newUrl];
-        if (savedInterval && savedInterval > 0) {
-          // New URL was also being refreshed, update interval if different
-          if (savedInterval !== interval) {
-            await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
-          }
-        } else {
-          // New URL is not being refreshed, stop refreshing this tab
-          await clearTabAutoRefresh(tabId, { clearUrl: false });
+      const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
+      const savedInterval = urlMap[stripHash(changeInfo.url)];
+      if (savedInterval && savedInterval > 0) {
+        // Hash-stripped URL matches a tracked URL — keep refreshing
+        // (covers hash-only changes and already-tracked URLs)
+        if (savedInterval !== interval) {
+          await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
         }
+      } else {
+        // New URL (ignoring hash) is not being refreshed, stop
+        await clearTabAutoRefresh(tabId, { clearUrl: false });
       }
     }
   }
