@@ -17,6 +17,8 @@ function stripHash(url) {
 const STATIC_PERIODS = [1, 5, 10, 15, 30, 60, 120, 300];
 
 const nextRefreshTimes = {};
+/** tabId -> hash-stripped URL currently being refreshed, used to detect real navigation. */
+const trackedUrls = {};
 let updateInterval = null;
 
 function getAlarmName(tabId) {
@@ -83,6 +85,7 @@ async function setTabAutoRefresh(tabId, seconds, { skipReload = false, syncSibli
       const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
       urlMap[stripHash(tabUrl)] = seconds;
       await browser.storage.local.set({ urlRefreshMap: urlMap });
+      trackedUrls[tabId] = stripHash(tabUrl);
     }
   } catch (e) { /* tab may not exist */ }
 
@@ -142,6 +145,7 @@ async function clearTabAutoRefresh(tabId, { clearUrl = true, syncSiblings = fals
   }
 
   delete nextRefreshTimes[tabId];
+  delete trackedUrls[tabId];
 
   const tabs = await browser.tabs.query({ active: true, currentWindow: true });
   if (tabs[0] && tabs[0].id === tabId) {
@@ -239,6 +243,10 @@ async function reconcileUrlMap() {
     const seconds = state[tabId];
     if (seconds > 0) {
       nextRefreshTimes[id] = Date.now() + seconds * 1000;
+      try {
+        const tab = await browser.tabs.get(id);
+        if (tab.url) trackedUrls[id] = stripHash(tab.url);
+      } catch (e) { /* tab gone */ }
       // Ensure the alarm still exists (may have been lost)
       const existing = await browser.alarms.get(getAlarmName(id));
       if (!existing) {
@@ -336,11 +344,13 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
     const interval = await getTabAutoRefreshInterval(tabId);
     if (interval > 0) {
       const urlMap = (await browser.storage.local.get("urlRefreshMap")).urlRefreshMap || {};
-      const savedInterval = urlMap[stripHash(changeInfo.url)];
+      const newUrl = stripHash(changeInfo.url);
+      const savedInterval = urlMap[newUrl];
       if (savedInterval && savedInterval > 0) {
-        // Hash-stripped URL matches a tracked URL — keep refreshing
-        // (covers hash-only changes and already-tracked URLs)
-        if (savedInterval !== interval) {
+        // Hash-stripped URL matches a tracked URL — keep refreshing.
+        // Restart the alarm/countdown when the page actually changed, so the
+        // new URL gets a full interval instead of inheriting the old one's.
+        if (newUrl !== trackedUrls[tabId] || savedInterval !== interval) {
           await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
         }
       } else {
