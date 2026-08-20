@@ -47,6 +47,10 @@ git tag v1.2.6
 git push origin v1.2.6
 ```
 
+Release notes are generated from the commit subjects since the previous tag, and are published to
+both the GitHub release and the AMO version listing. Commit messages are the release notes, so write
+them accordingly.
+
 AMO submission needs the `AMO_API_KEY` and `AMO_API_SECRET` repository secrets, generated at
 [the AMO credentials page](https://addons.mozilla.org/developers/addon/api/key/). AMO rejects a
 version it has already seen, so each release needs a new tag.

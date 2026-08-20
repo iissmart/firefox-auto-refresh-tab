@@ -23,10 +23,23 @@ jobs:
           : "${API_SECRET:?the AMO_API_SECRET repository secret is not set}"
 
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+
+      - name: Build release notes
+        run: |
+          previous="$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)"
+          git log --no-merges --pretty=format:'- %s (%h)' "${previous:+$previous..}$GITHUB_REF_NAME" \
+            > "$RUNNER_TEMP/notes.md"
+          [ -s "$RUNNER_TEMP/notes.md" ] || echo '- No commits since the previous release.' > "$RUNNER_TEMP/notes.md"
+          { echo "## Changes${previous:+ since $previous}"; echo; cat "$RUNNER_TEMP/notes.md"; } > "$RUNNER_TEMP/gh-notes.md"
+          # AMO renders release notes as text, so it gets the bare list without the heading
+          jq -n --rawfile notes "$RUNNER_TEMP/notes.md" \
+            '{version: {release_notes: {"en-US": $notes}}}' > "$RUNNER_TEMP/amo-metadata.json"
 
       - name: Pack
         id: pack
@@ -45,7 +58,9 @@ jobs:
           WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
           WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
         # AMO signs after review, so don't block the job waiting for it
-        run: npx --yes web-ext@10 sign --source-dir dist --channel listed --approval-timeout 0
+        run: |
+          npx --yes web-ext@10 sign --source-dir dist --channel listed --approval-timeout 0 \
+            --amo-metadata "$RUNNER_TEMP/amo-metadata.json"
 
       - name: Publish release
         env:
@@ -53,5 +68,5 @@ jobs:
         run: |
           gh release create "$GITHUB_REF_NAME" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes \
+            --notes-file "$RUNNER_TEMP/gh-notes.md" \
             "${{ steps.pack.outputs.asset }}"
