@@ -1,0 +1,57 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v[0-9]+.[0-9]+.[0-9]+'
+      - '[0-9]+.[0-9]+.[0-9]+'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      # secrets are unavailable in step-level `if`, so check them in a run step
+      - name: Check AMO credentials
+        env:
+          API_KEY: ${{ secrets.AMO_API_KEY }}
+          API_SECRET: ${{ secrets.AMO_API_SECRET }}
+        run: |
+          : "${API_KEY:?the AMO_API_KEY repository secret is not set}"
+          : "${API_SECRET:?the AMO_API_SECRET repository secret is not set}"
+
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Pack
+        id: pack
+        run: |
+          version="${GITHUB_REF_NAME#v}"
+          bash pack.sh "$version"
+          mv firefox-auto-refresh-tab.xpi "firefox-auto-refresh-tab-$version.xpi"
+          unzip -q "firefox-auto-refresh-tab-$version.xpi" -d dist
+          echo "asset=firefox-auto-refresh-tab-$version.xpi" >> "$GITHUB_OUTPUT"
+
+      - name: Lint
+        run: npx --yes web-ext@10 lint --source-dir dist
+
+      - name: Submit to addons.mozilla.org
+        env:
+          WEB_EXT_API_KEY: ${{ secrets.AMO_API_KEY }}
+          WEB_EXT_API_SECRET: ${{ secrets.AMO_API_SECRET }}
+        # AMO signs after review, so don't block the job waiting for it
+        run: npx --yes web-ext@10 sign --source-dir dist --channel listed --approval-timeout 0
+
+      - name: Publish release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes \
+            "${{ steps.pack.outputs.asset }}"
