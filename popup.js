@@ -86,3 +86,21 @@ browser.runtime.onMessage.addListener((message) => {
 
 renderOptions();
 refreshUI();
+
+// Function to update and display the extension version
+async function updateVersionDisplay() {
+  try {
+    const manifest = await browser.runtime.getManifest();
+    const versionText = `Version: ${manifest.version}`;
+    const versionElement = document.getElementById("version");
+    if (versionElement) {
+      versionElement.textContent = versionText;
+    } else {
+      console.error("Could not find the version display element in popup.html");
+    }
+  } catch (e) {
+    console.error("Error fetching or displaying extension version:", e);
+  }
+}
+// Call the version update function at startup
+updateVersionDisplay();
