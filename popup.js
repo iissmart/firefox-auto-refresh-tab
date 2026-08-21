@@ -91,7 +91,7 @@ refreshUI();
 async function updateVersionDisplay() {
   try {
     const manifest = await browser.runtime.getManifest();
-    const versionText = `Version: ${manifest.version}`;
+    const versionText = `v${manifest.version}`;
     const versionElement = document.getElementById("version");
     if (versionElement) {
       versionElement.textContent = versionText;
