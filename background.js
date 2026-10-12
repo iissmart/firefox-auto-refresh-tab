@@ -19,6 +19,8 @@ const STATIC_PERIODS = [1, 5, 10, 15, 30, 60, 120, 300];
 const nextRefreshTimes = {};
 /** tabId -> hash-stripped URL currently being refreshed, used to detect real navigation. */
 const trackedUrls = {};
+/** Tabs reloaded by this extension whose new page has not committed yet. */
+const selfReloads = new Set();
 let updateInterval = null;
 
 function getAlarmName(tabId) {
@@ -97,9 +99,11 @@ async function setTabAutoRefresh(tabId, seconds, { skipReload = false, syncSibli
   }
 
   if (!skipReload) {
+    selfReloads.add(tabId);
     try {
       await browser.tabs.reload(tabId, { bypassCache: false });
     } catch (error) {
+      selfReloads.delete(tabId);
       // If tab is unavailable, clear the interval.
       await clearTabAutoRefresh(tabId);
     }
@@ -313,12 +317,14 @@ browser.alarms.onAlarm.addListener(async (alarm) => {
     return;
   }
 
+  selfReloads.add(tabId);
   try {
     await browser.tabs.reload(tabId, { bypassCache: false });
     // Reset next refresh time
     nextRefreshTimes[tabId] = Date.now() + interval * 1000;
     updateIcon();
   } catch (error) {
+    selfReloads.delete(tabId);
     // Reload failed — only clear if the tab truly no longer exists
     try {
       await browser.tabs.get(tabId);
@@ -338,6 +344,11 @@ browser.tabs.onRemoved.addListener(async (tabId) => {
 });
 
 browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  // Firefox reports the URL with status "loading" whenever a new page commits, reloads included.
+  const pageCommitted = changeInfo.status === "loading" && Boolean(changeInfo.url);
+  // Consume the flag before any await so a later commit cannot claim it.
+  const reloadedBySelf = pageCommitted && selfReloads.delete(tabId);
+
   // When URL changes on a tab that is actively refreshing, stop it
   // unless the new URL is also in the urlRefreshMap
   if (changeInfo.url) {
@@ -352,6 +363,11 @@ browser.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
         // new URL gets a full interval instead of inheriting the old one's.
         if (newUrl !== trackedUrls[tabId] || savedInterval !== interval) {
           await setTabAutoRefresh(tabId, savedInterval, { skipReload: true });
+        } else if (pageCommitted && !reloadedBySelf) {
+          // Reloaded by the user (e.g. F5) or the page itself: count a full interval from now.
+          await browser.alarms.create(getAlarmName(tabId), { periodInMinutes: interval / 60 });
+          nextRefreshTimes[tabId] = Date.now() + interval * 1000;
+          updateIcon();
         }
       } else {
         // New URL (ignoring hash) is not being refreshed, stop
